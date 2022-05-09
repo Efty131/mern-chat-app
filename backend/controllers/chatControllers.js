@@ -3,6 +3,7 @@ const Chat = require("../Models/chatModel");
 const Chats = require("../Models/chatModel");
 const User = require("../Models/userModel");
 
+
 const accessChat = asyncHandler(async (req, res) => {
   const { userId } = req.body;
 
@@ -37,13 +38,12 @@ const accessChat = asyncHandler(async (req, res) => {
 
     try {
       const createdChat = await Chat.create(chatData);
-
       const FullChat = await Chat.findOne({ _id: createdChat._id }).populate(
         "users",
         "-password"
       );
 
-      res.status(200).send(FullChat);
+      res.status(200).json(FullChat);
     } catch (error) {
       res.status(400);
       throw new Error(error.message);
