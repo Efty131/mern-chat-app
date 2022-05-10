@@ -9,13 +9,33 @@ import UpdateGroupChatModal from "./miscellaneous/UpdateGroupChatModal";
 import { FormControl, Spinner, Input, useToast } from "@chakra-ui/react";
 import axios from "axios";
 import ScrollableChat from "./ScrollableChat";
+import Lottie from "react-lottie";
+import animationData from "../Animation/typing.json";
 import "./styles.css";
+
+import io from "socket.io-client";
+
+
+const ENDPOINT = "http://localhost:5000";
+var socket, selectedChatCompare;
 
 const SingleChat = ({ fetchAgain, setFetchAgain }) => {
 
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [newMessage, setNewMessage] = useState();
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+
+  const defaultOptions = {
+    loop: true,
+    autoplay: true,
+    animationData: animationData,
+    rendererSettings: {
+      preserveAspectRatio: "xMidyMid slice",
+    },
+  };
 
   const toast = useToast();
   const { user, selectedChat, setSelectedChat } = ChatState();
@@ -40,6 +60,8 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       console.log(data);
       setMessages(data);
       setLoading(false);
+
+      socket.emit('join chat', selectedChat._id);
     } catch (error) {
       toast({
         title: "Error Occured!",
@@ -53,11 +75,34 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   };
 
   useEffect(() => {
+    socket = io(ENDPOINT);
+    socket.emit("setup", user);
+    socket.on("connected", () => setSocketConnected(true));
+    socket.on('typing', () => setIsTyping(true));
+    socket.on('stop typing', () => setIsTyping(false));
+
+  }, []);
+
+  useEffect(() => {
     fetchMessages();
+
+    selectedChatCompare = selectedChat;
   }, [selectedChat]);
+
+  useEffect(() => {
+    socket.on('message recieved', (newMessageRecieved) => {
+      if (!selectedChatCompare || selectedChatCompare._id !== newMessageRecieved.chat._id){
+        //          Send notification
+
+      } else {
+        setMessages([...messages, newMessageRecieved]);
+      }
+    });
+  })
 
   const sendMessage = async (event) => {
     if (event.key === "Enter" && newMessage) {
+      socket.emit("stop typing", selectedChat._id);
 
       try {
         const config = {
@@ -75,7 +120,9 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           },
           config
         );
-console.log(data);
+        console.log(data);
+
+        socket.emit("new message", data);
         setMessages([...messages, data]);
       } catch (error) {
         toast({
@@ -90,10 +137,29 @@ console.log(data);
     }
   };
 
+
   const typingHandler = (e) => {
     setNewMessage(e.target.value);
 
     // Typing indicator Logic
+
+    if(!socketConnected) return;
+
+    if(!typing) {
+      setTyping(true);
+      socket.emit("typing", selectedChat._id);
+    }
+    let lastTypingTime = new Date().getTime();
+    var timerLength = 3000;
+    setTimeout(() => {
+      var timeNow = new Date().getTime();
+      var timeDiff = timeNow - lastTypingTime;
+
+      if (timeDiff >= timerLength && typing) {
+        socket.emit("stop typing", selectedChat._id);
+        setTyping(false);
+      }
+    }, timerLength);
   };
 
   return (
@@ -127,7 +193,7 @@ console.log(data);
               </>
             )}
           </Text>
-          <Box d="flex" justifyContent="flex-end" p={3} bg="#E8E8E8" w="100%" h="100%" borderRadius="lg" overflowY="hidden">
+          <Box d="flex" flexDir="column" justifyContent="flex-end" p={3} bg="#E8E8E8" w="100%" h="100%" borderRadius="lg" overflowY="hidden">
            {loading ? (
              <Spinner 
              size="xl" w={20} h={20} alignSelf="center" margin="auto" />
@@ -137,6 +203,14 @@ console.log(data);
               </div>
            )}
            <FormControl onKeyDown={sendMessage} isRequired >
+             {isTyping ? <div>
+              <Lottie
+                    options={defaultOptions}
+                    // height={50}
+                    width={70}
+                    style={{ marginBottom: 0, marginLeft: 0 }}
+                  />
+             </div> : <></>}
               <Input variant="filled" bg="#E0E0E0" placeholder="Enter a Message.." onChange={typingHandler} value={newMessage} />
            </FormControl>
           </Box>
